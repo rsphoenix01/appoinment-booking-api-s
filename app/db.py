@@ -22,14 +22,14 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CERT_PATH = os.path.join(PROJECT_ROOT, 'global-bundle.pem')
 print(CERT_PATH)
 
-
+@contextmanager
 def get_db():
     client = MongoClient(
-        "mongodb+srv://mroshanabbas1205:9b3Tsl9TpXgjzJWS@cluster0.cjml3.mongodb.net/"
+        f"mongodb://rsphoenix01:roshan2001@docdb-2024-12-25-19-53-23.cluster-cpewq2y240fa.ap-south-1.docdb.amazonaws.com:27017/?tls=true&tlsCAFile={CERT_PATH}&replicaSet=rs0&readPreference=secondaryPreferred&retryWrites=false"
          
     )
     try:
-        db = client["appointments-system"]
+        db = client["college_appointments"]
         yield db
     finally:
         client.close()
