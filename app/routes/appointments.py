@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from app.schemas import AppointmentCreate
+from app.models import Appointment
 from app.db import get_db  # MongoDB connection
 from datetime import datetime
 from fastapi_jwt_auth import AuthJWT
@@ -11,6 +11,7 @@ import logging
 import os
 import pytz
 from app.db import get_db
+
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -34,7 +35,7 @@ router = APIRouter()
 # Appointment Booking Route
 @router.post("/appointments")
 def book_appointment(
-    appointment: AppointmentCreate,
+    appointment: Appointment,
     db: MongoClient = Depends(get_db),
     Authorize: AuthJWT = Depends()
 ):
@@ -43,6 +44,7 @@ def book_appointment(
         Authorize.jwt_required()
         student_id = str(Authorize.get_jwt_subject())  # JWT subject is the student ID
         user_role = Authorize.get_raw_jwt().get("role")
+        print(student_id)
 
         if user_role != "student":
             raise HTTPException(status_code=403, detail="Only students can book appointments")
@@ -53,13 +55,13 @@ def book_appointment(
             raise HTTPException(status_code=404, detail="Professor not found")
 
         # Step 3: Ensure the student is booking for themselves
-        if student_id != appointment.student_id:
+        if student_id != str(appointment.student_id):
             raise HTTPException(status_code=403, detail="You can only book appointments for yourself")
 
         # Step 4: Validate the time slot provided
         try:
-            start_time = datetime.fromisoformat(appointment.start_time).astimezone(pytz.UTC)
-            end_time = datetime.fromisoformat(appointment.end_time).astimezone(pytz.UTC)
+            start_time = datetime.fromisoformat(appointment.start_time)
+            end_time = datetime.fromisoformat(appointment.end_time)
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid time format for start_time or end_time")
 
@@ -67,7 +69,7 @@ def book_appointment(
             raise HTTPException(status_code=400, detail="Start time must be earlier than end time")
 
         # Step 5: Check professor's availability for the requested slot
-        available_slots = list(db["availabilities"].find({"professor_id": appointment.professor_id}))
+        available_slots = list(db["availability"].find({"professor_id": appointment.professor_id}))
 
         # Ensure that the requested time slot is fully covered by one of the professor's availability slots
         slot_found = any(
@@ -104,7 +106,7 @@ def book_appointment(
         for slot in available_slots:
             if slot["start_time"] == start_time and slot["end_time"] == end_time:
                 # Remove the exact match slot (fully booked)
-                db["availabilities"].delete_one({"_id": slot["_id"]})
+                db["availabily"].delete_one({"_id": slot["_id"]})
             elif start_time > slot["start_time"] and end_time < slot["end_time"]:
                 # Case 1: Split the availability into two parts
                 new_slot1 = {
@@ -117,19 +119,19 @@ def book_appointment(
                     "start_time": end_time,
                     "end_time": slot["end_time"]
                 }
-                db["availabilities"].insert_one(new_slot1)
-                db["availabilities"].insert_one(new_slot2)
+                db["availability"].insert_one(new_slot1)
+                db["availability"].insert_one(new_slot2)
 
                 # Delete the original slot after creating the two new slots
-                db["availabilities"].delete_one({"_id": slot["_id"]})
+                db["availability"].delete_one({"_id": slot["_id"]})
             elif start_time == slot["start_time"]:
                 # Case 2: Shrink the slot to start after the appointment
-                db["availabilities"].update_one(
+                db["availability"].update_one(
                     {"_id": slot["_id"]}, {"$set": {"start_time": end_time}}
                 )
             elif end_time == slot["end_time"]:
                 # Case 3: Shrink the slot to end before the appointment
-                db["availabilities"].update_one(
+                db["availability"].update_one(
                     {"_id": slot["_id"]}, {"$set": {"end_time": start_time}}
                 )
 
@@ -193,35 +195,52 @@ def cancel_appointment(
 # Get Appointments Route
 @router.get("/getappointments")
 def get_appointments(Authorize: AuthJWT = Depends(), db: MongoClient = Depends(get_db)):
+    # Ensure the user is authorized
     Authorize.jwt_required()
-    user_id = str(Authorize.get_jwt_subject())
+    user_id = Authorize.get_jwt_subject()
     raw_jwt = Authorize.get_raw_jwt()
     role = raw_jwt.get("role")
 
+    # Convert user_id to ObjectId for database query
+    try:
+        userid = ObjectId(user_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid user ID format")
+
+    # Fetch appointments based on role
     if role == "professor":
         appointments = list(db["appointments"].find({
-            "professor_id": user_id, "is_canceled": False
+            "professor_id": userid,
+            "is_canceled": False
         }))
     elif role == "student":
         appointments = list(db["appointments"].find({
-            "student_id": user_id, "is_canceled": False
+            "student_id": userid,
+            "is_canceled": False
         }))
     else:
         raise HTTPException(status_code=403, detail="Unauthorized role")
 
+    # If no appointments found, return an empty list
     if not appointments:
         return {"appointments": []}
 
-    appointment_data = [
-        {
-            "appointment_id": str(appointment["_id"]),
-            "student_id": appointment["student_id"],
-            "professor_id": appointment["professor_id"],
-            "start_time": appointment["start_time"].isoformat(),
-            "end_time": appointment["end_time"].isoformat(),
-            "is_canceled": appointment["is_canceled"]
-        }
-        for appointment in appointments
-    ]
+    # Serialize the appointment data
+    appointment_data = []
+    for appointment in appointments:
+        try:
+            appointment_data.append({
+                "appointment_id": str(appointment["_id"]),
+                "student_id": str(appointment["student_id"]),  # Convert ObjectId to string
+                "professor_id": str(appointment["professor_id"]),  # Convert ObjectId to string
+                "start_time": appointment["start_time"].isoformat() if isinstance(appointment["start_time"], datetime) else appointment["start_time"],
+                "end_time": appointment["end_time"].isoformat() if isinstance(appointment["end_time"], datetime) else appointment["end_time"],
+                "is_canceled": appointment["is_canceled"]
+            })
+        except KeyError as e:
+            raise HTTPException(status_code=500, detail=f"Missing key in appointment data: {str(e)}")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Error processing appointment data: {str(e)}")
 
+    # Return the serialized appointment data
     return {"appointments": appointment_data}

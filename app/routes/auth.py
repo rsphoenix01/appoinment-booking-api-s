@@ -18,7 +18,7 @@ router = APIRouter()
 
 # Route to register a new user
 @router.post("/register")
-async def register_user(user: User, db=Depends(get_db)): 
+def register_user(user: User, db=Depends(get_db)): 
     try:
         # Check if the username already exists
         existing_user = db["users"].find_one({"username": user.username})

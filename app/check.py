@@ -11,7 +11,6 @@ def test_connection(MONGO_URI):
         print(f"Connection failed: {e}")
 
 # Replace with your actual MongoDB URI
-MONGO_URI = "mongodb://rsphoenix01:roshan2001@docdb-2024-12-25-19-53-23.cluster-cpewq2y240fa.ap-south-1.docdb.amazonaws.com:27017/?tls=true&tlsCAFile=global-bundle.pem&replicaSet=rs0&readPreference=secondaryPreferred&retryWrites=false"
-
+MONGO_URI ="mongodb+srv://mroshanabbas1205:9b3Tsl9TpXgjzJWS@cluster0.cjml3.mongodb.net/"
 
 test_connection(MONGO_URI)
