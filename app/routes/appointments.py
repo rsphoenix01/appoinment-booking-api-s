@@ -106,7 +106,7 @@ def book_appointment(
         for slot in available_slots:
             if slot["start_time"] == start_time and slot["end_time"] == end_time:
                 # Remove the exact match slot (fully booked)
-                db["availabily"].delete_one({"_id": slot["_id"]})
+                db["availability"].delete_one({"_id": slot["_id"]})
             elif start_time > slot["start_time"] and end_time < slot["end_time"]:
                 # Case 1: Split the availability into two parts
                 new_slot1 = {
