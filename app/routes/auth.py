@@ -46,9 +46,9 @@ def login_user(user: User, db=Depends(get_db), Authorize: AuthJWT = Depends()):
 
     # Create JWT with user details
     access_token = Authorize.create_access_token(
-        subject=str(found_user["_id"]),  # Use MongoDB ObjectId as subject
+        subject=str(found_user["_id"])
         user_claims={"role": found_user["role"]},
-        expires_time=timedelta(hours=1)  # Token expires after 1 hour
+        expires_time=timedelta(hours=1)  
     )
 
     return {
